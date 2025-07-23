@@ -55,7 +55,7 @@ def download_and_rewrite_assets(soup, page_url, asset_folder, url_prefix):
     return str(soup)
 
 # Helper: Rewrite internal links to route through /archive/{domain}/{path}/{timestamp}
-def rewrite_internal_links(soup, domain, timestamp):
+def rewrite_internal_links(soup, domain, timestamp, base_path):
     for a in soup.find_all("a", href=True):
         href = a["href"]
         parsed_href = urlparse(href)
@@ -65,13 +65,18 @@ def rewrite_internal_links(soup, domain, timestamp):
             continue
 
         path = parsed_href.path.strip("/")
-        if path:
-            a["href"] = f"/archive/{domain}/{timestamp}/{path}"
+        # Remove the base_path prefix from the path if present
+        if base_path and path.startswith(base_path):
+            sub_path = path[len(base_path):].strip("/")
         else:
-            a["href"] = f"/archive/{domain}/{timestamp}"
+            sub_path = path
+        if sub_path:
+            a["href"] = f"/archive/{domain}/{base_path}/{timestamp}/{sub_path}"
+        else:
+            a["href"] = f"/archive/{domain}/{base_path}/{timestamp}"
 
 # Helper: Recursively archive page and internal links
-def archive_page(url, base_dir, timestamp, visited, depth=0, max_depth=2, is_root=False):
+def archive_page(url, base_dir, timestamp, base_path, visited, depth=0, max_depth=2, is_root=False):
     if url in visited or depth > max_depth:
         return
     visited.add(url)
@@ -91,11 +96,8 @@ def archive_page(url, base_dir, timestamp, visited, depth=0, max_depth=2, is_roo
     path_parts = parsed.path.strip("/").split("/") if parsed.path.strip("/") else []
     url_prefix = "/archives/" + "/".join([parsed.netloc] + path_parts + [timestamp, "assets"])
 
-    if is_root:
-        page_dir = base_dir
-    else:
-        rel_path = parsed.path.strip("/")
-        page_dir = os.path.join(base_dir, rel_path) if rel_path else base_dir
+    rel_path = parsed.path.strip("/")
+    page_dir = os.path.join(base_dir, rel_path) if rel_path else base_dir
     os.makedirs(page_dir, exist_ok=True)
     html_path = os.path.join(page_dir, "index.html")
 
@@ -107,10 +109,10 @@ def archive_page(url, base_dir, timestamp, visited, depth=0, max_depth=2, is_roo
             orig_href = a["href"]  # Use the original href for crawling
             link = urljoin(url, orig_href)
             if urlparse(link).netloc == parsed.netloc:
-                archive_page(link, base_dir, timestamp, visited, depth + 1, max_depth, is_root=False)
+                archive_page(link, base_dir, timestamp, base_path, visited, depth + 1, max_depth, is_root=False)
 
     # --- Now rewrite internal links for the saved HTML ---
-    rewrite_internal_links(soup, parsed.netloc, timestamp)
+    rewrite_internal_links(soup, parsed.netloc, timestamp, base_path)
 
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(str(soup))
@@ -131,8 +133,9 @@ def archive_site(request: ArchiveRequest):
     os.makedirs(timestamp_dir, exist_ok=True)
 
     visited = set()
+    base_path = path  # The path you started crawling from
     try:
-        archive_page(request.url, timestamp_dir, timestamp, visited, depth=0, max_depth=1, is_root=True)
+        archive_page(request.url, timestamp_dir, timestamp, base_path, visited, depth=0, max_depth=1, is_root=True)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
