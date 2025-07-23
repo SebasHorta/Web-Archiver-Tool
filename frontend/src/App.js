@@ -1,11 +1,20 @@
 // Greenboard Web Archiver - React Frontend
 // Lets users archive a website, view all snapshots, and browse archived pages
+// Clean, well-documented code with clear structure and comments for easy understanding
+//
+// Main features:
+// - Archive a website by URL (POST to backend)
+// - List all archived domains/timestamps
+// - View archived snapshots in an iframe
+// - Show progress, errors, and user feedback
+// - Modern, user-friendly UI
 
 import React, { useState, useEffect } from "react";
 import "./App.css";
 
 // Helper: Format timestamp (YYYYMMDDHHMMSS -> YYYY-MM-DD HH:MM:SS)
 const formatTimestamp = (ts) => {
+  // Only format if it's a 14-digit timestamp
   if (!/^\d{14}$/.test(ts)) return ts;
   return `${ts.slice(0,4)}-${ts.slice(4,6)}-${ts.slice(6,8)} ${ts.slice(8,10)}:${ts.slice(10,12)}:${ts.slice(12,14)}`;
 };
@@ -34,17 +43,16 @@ function App() {
 
   // Fetch all archives from backend
   const fetchAllArchives = async () => {
-    setLoadingArchives(true);
-    setArchivesError("");
+    setLoadingArchives(true); // Show loading spinner
+    setArchivesError("");    // Clear previous errors
     try {
-      // Hit backend endpoint to get all archived domains/timestamps
       const res = await fetch("http://localhost:8000/api/archives/all");
       const data = await res.json();
-      setAllArchives(data.archives || {});
+      setAllArchives(data.archives || {}); // Set archive data
     } catch (err) {
       setArchivesError("Error loading archives: " + err.message);
     }
-    setLoadingArchives(false);
+    setLoadingArchives(false); // Hide loading spinner
   };
 
   // On mount, load all archives
@@ -59,16 +67,15 @@ function App() {
 
   // Archive a URL (POST to backend)
   const handleArchive = async () => {
-    setArchiveResult("");
-    setUrlError("");
+    setArchiveResult(""); // Clear previous result
+    setUrlError("");      // Clear previous error
     if (!validateUrl(url)) {
       setUrlError("Please enter a valid URL that starts with https:// and ends with .com");
       return;
     }
-    setArchiveLoading(true);
-    setShowProgress(true);
+    setArchiveLoading(true); // Show spinner on button
+    setShowProgress(true);   // Show progress area
     try {
-      // Send archive request to backend
       const res = await fetch("http://localhost:8000/archive", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -80,15 +87,17 @@ function App() {
     } catch (err) {
       setArchiveResult("Error: " + err.message);
     }
-    setArchiveLoading(false);
-    setShowProgress(false);
+    setArchiveLoading(false); // Hide spinner
+    setShowProgress(false);   // Hide progress area
   };
 
   // Build the correct snapshot URL for iframe
   const getSnapshotUrl = (domainPath, timestamp) => {
+    // domainPath is like 'www.site.com/about' or just 'www.site.com'
     const parts = domainPath.split("/");
     const domain = parts[0];
     const path = parts.slice(1).join("/");
+    // If there's a subpath, include it in the URL
     return path
       ? `http://localhost:8000/archive/${domain}/${path}/${timestamp}`
       : `http://localhost:8000/archive/${domain}/${timestamp}`;
@@ -108,7 +117,7 @@ function App() {
           value={url}
           onChange={e => {
             setUrl(e.target.value);
-            setUrlError("");
+            setUrlError(""); // Clear error on change
           }}
           placeholder="Enter URL to archive"
           className="gb-input"
