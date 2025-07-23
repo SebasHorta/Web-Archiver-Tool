@@ -54,6 +54,20 @@ def download_and_rewrite_assets(soup, page_url, asset_folder, url_prefix):
                     print(f"Failed to download asset {asset_url}: {e}")
     return str(soup)
 
+
+def rewrite_internal_links(soup, domain, timestamp):
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        parsed_href = urlparse(href)
+        # Only rewrite if it's a same-domain or relative link
+        if not parsed_href.netloc or parsed_href.netloc == domain:
+            path = parsed_href.path.strip("/")
+            if path:
+                a["href"] = f"/archive/{domain}/{path}/{timestamp}"
+            else:
+                a["href"] = f"/archive/{domain}/{timestamp}"
+
+
 # Helper: Recursively archive page and internal links
 def archive_page(url, base_dir, timestamp, visited, depth=0, max_depth=2, is_root=False):
     if url in visited or depth > max_depth:
@@ -78,21 +92,26 @@ def archive_page(url, base_dir, timestamp, visited, depth=0, max_depth=2, is_roo
     if is_root:
         page_dir = base_dir
     else:
-        rel_path = parsed.path.strip("/") or "root"
-        page_dir = os.path.join(base_dir, rel_path)
+        rel_path = parsed.path.strip("/")
+        page_dir = os.path.join(base_dir, rel_path) if rel_path else base_dir
     os.makedirs(page_dir, exist_ok=True)
     html_path = os.path.join(page_dir, "index.html")
 
     download_and_rewrite_assets(soup, url, os.path.join(page_dir, "assets"), url_prefix)
 
-    with open(html_path, "w", encoding="utf-8") as f:
-        f.write(str(soup))
-
+    # --- Crawl internal links BEFORE rewriting them ---
     if depth < max_depth:
         for a in soup.find_all("a", href=True):
-            link = urljoin(url, a["href"])
+            orig_href = a["href"]  # Use the original href for crawling
+            link = urljoin(url, orig_href)
             if urlparse(link).netloc == parsed.netloc:
                 archive_page(link, base_dir, timestamp, visited, depth + 1, max_depth, is_root=False)
+
+    # --- Now rewrite internal links for the saved HTML ---
+    rewrite_internal_links(soup, parsed.netloc, timestamp)
+
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(str(soup))
 
 
 # POST /archive: Archive a website snapshot
