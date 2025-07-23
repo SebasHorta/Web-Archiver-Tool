@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
 
+const LIKELY_PAGES = [
+  "/about", "/contact", "/products", "/services", "/team", "/careers", "/blog", "/faq", "/pricing"
+];
+
 function App() {
   // State for archiving
   const [url, setUrl] = useState("");
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [archiveResult, setArchiveResult] = useState("");
   const [urlError, setUrlError] = useState("");
+  const [showProgress, setShowProgress] = useState(false);
 
   // State for all archives
   const [allArchives, setAllArchives] = useState({});
@@ -49,6 +54,7 @@ function App() {
       return;
     }
     setArchiveLoading(true);
+    setShowProgress(true);
     try {
       const res = await fetch("http://localhost:8000/archive", {
         method: "POST",
@@ -62,6 +68,7 @@ function App() {
       setArchiveResult("Error: " + err.message);
     }
     setArchiveLoading(false);
+    setShowProgress(false);
   };
 
   // Helper to build the correct snapshot URL
@@ -109,6 +116,12 @@ function App() {
         <div className={archiveResult.startsWith("Error") ? "gb-msg gb-msg-error" : "gb-msg gb-msg-success"}>
           {archiveResult}
         </div>
+        {showProgress && (
+          <div className="gb-progress-area">
+            <div className="gb-spinner" />
+            <div className="gb-progress-msg">Archiving... this may take a minute for larger sites.</div>
+          </div>
+        )}
       </section>
 
       {/* List all archives in a table */}
@@ -156,7 +169,7 @@ function App() {
       {selectedArchive && (
         <section className="gb-card gb-snapshot-section">
           <h2 className="gb-section-title">
-            Snapshot: {selectedArchive.domain} @ {selectedArchive.timestamp}
+            Snapshot: {selectedArchive.domain} @ {formatTimestamp(selectedArchive.timestamp)}
           </h2>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             <button

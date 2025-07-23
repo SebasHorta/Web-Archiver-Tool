@@ -59,11 +59,14 @@ def rewrite_internal_links(soup, domain, timestamp, base_path):
     for a in soup.find_all("a", href=True):
         href = a["href"]
         parsed_href = urlparse(href)
-
-        # Skip external links
+        # Mark external links
         if parsed_href.netloc and parsed_href.netloc != domain:
+            a["class"] = (a.get("class", []) or []) + ["external-link"]
+            a["target"] = "_blank"
+            a["rel"] = "noopener noreferrer"
+            a["data-external"] = "true"
+            a["title"] = "This link will take you to the live website"
             continue
-
         path = parsed_href.path.strip("/")
         # Remove the base_path prefix from the path if present
         if base_path and path.startswith(base_path):
@@ -114,8 +117,27 @@ def archive_page(url, base_dir, timestamp, base_path, visited, depth=0, max_dept
     # --- Now rewrite internal links for the saved HTML ---
     rewrite_internal_links(soup, parsed.netloc, timestamp, base_path)
 
+    # Inject modal JS for external links
+    modal_js = '''<script>\n
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('a[data-external="true"]').forEach(function(link) {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      if (window.confirm('You are about to leave the archive and visit the live website. Continue?')) {
+        window.open(link.href, '_blank', 'noopener,noreferrer');
+      }
+    });
+  });
+});
+</script>'''
+    # Save HTML with modal JS injected before </body>
+    html_str = str(soup)
+    if '</body>' in html_str:
+        html_str = html_str.replace('</body>', modal_js + '</body>')
+    else:
+        html_str += modal_js
     with open(html_path, "w", encoding="utf-8") as f:
-        f.write(str(soup))
+        f.write(html_str)
 
 # POST /archive: Archive a website snapshot
 @app.post("/archive")
@@ -164,7 +186,29 @@ def list_archive(domain: str = Query(..., description="Domain or domain/path to 
 def snapShot_root(domain: str, timestamp: str):
     filepath = os.path.join("archives", domain, timestamp, "index.html")
     if not os.path.exists(filepath):
-        return Response(content="Snapshot not found", status_code=404)
+        not_found_html = '''
+        <html>
+          <head>
+            <title>Archive Limit Reached</title>
+            <style>
+              body { font-family: sans-serif; background: #f7f9fb; color: #1a3a5d; text-align: center; padding: 60px; }
+              .nf-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); display: inline-block; padding: 32px 40px; }
+              .nf-title { font-size: 2rem; font-weight: 700; margin-bottom: 18px; }
+              .nf-msg { font-size: 1.2rem; margin-bottom: 24px; }
+              .nf-btn { background: #3a7afe; color: #fff; border: none; border-radius: 6px; padding: 10px 24px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+              .nf-btn:hover { background: #1a5edb; }
+            </style>
+          </head>
+          <body>
+            <div class="nf-card">
+              <div class="nf-title">Archive Limit Reached</div>
+              <div class="nf-msg">This is as far as we archived. The page you tried to visit was not captured.</div>
+              <button class="nf-btn" onclick="window.close()">Close Tab</button>
+            </div>
+          </body>
+        </html>
+        '''
+        return Response(content=not_found_html, media_type="text/html", status_code=404)
     with open(filepath, "r", encoding="utf-8") as f:
         html = f.read()
     return Response(content=html, media_type="text/html")
@@ -184,7 +228,38 @@ def snapShot(
         filepath = os.path.join("archives", domain, timestamp, "index.html")
 
     if not os.path.exists(filepath):
-        return Response(content="Snapshot not found", status_code=404)
+        not_found_html = '''
+        <html>
+          <head>
+            <title>Archive Limit Reached</title>
+            <style>
+              body { font-family: sans-serif; background: #f7f9fb; color: #1a3a5d; text-align: center; padding: 60px; }
+              .nf-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); display: inline-block; padding: 32px 40px; }
+              .nf-title { font-size: 2rem; font-weight: 700; margin-bottom: 18px; }
+              .nf-msg { font-size: 1.2rem; margin-bottom: 24px; }
+              .nf-btn { background: #3a7afe; color: #fff; border: none; border-radius: 6px; padding: 10px 24px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+              .nf-btn:hover { background: #1a5edb; }
+            </style>
+            <script>
+              function handleGoBack() {
+                if (window.opener || window.history.length <= 1) {
+                  window.close();
+                } else {
+                  window.history.back();
+                }
+              }
+            </script>
+          </head>
+          <body>
+            <div class="nf-card">
+              <div class="nf-title">Archive Limit Reached</div>
+              <div class="nf-msg">This is as far as we archived. The page you tried to visit was not captured.</div>
+              <button class="nf-btn" onclick="handleGoBack()">Go Back</button>
+            </div>
+          </body>
+        </html>
+        '''
+        return Response(content=not_found_html, media_type="text/html", status_code=404)
 
     with open(filepath, "r", encoding="utf-8") as f:
         html = f.read()

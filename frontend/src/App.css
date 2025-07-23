@@ -239,6 +239,52 @@ body.gb-no-scroll {
   font-weight: 500;
 }
 
+.gb-progress-area {
+  margin-top: 18px;
+  padding: 16px 12px;
+  background: #f3f6fa;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(58,122,254,0.04);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.gb-spinner {
+  width: 32px;
+  height: 32px;
+  border: 4px solid #e6eefb;
+  border-top: 4px solid #3a7afe;
+  border-radius: 50%;
+  animation: gb-spin 1s linear infinite;
+  margin-bottom: 6px;
+}
+@keyframes gb-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.gb-progress-msg {
+  font-size: 1.08rem;
+  color: #1a3a5d;
+  font-weight: 500;
+}
+.gb-likely-pages-label {
+  font-size: 0.98rem;
+  color: #3a7afe;
+  margin-top: 6px;
+  font-weight: 600;
+}
+.gb-likely-pages {
+  list-style: disc inside;
+  margin: 0 0 0 12px;
+  padding: 0;
+  color: #1a3a5d;
+  font-size: 0.98rem;
+}
+.gb-likely-pages li {
+  margin-bottom: 2px;
+}
+
 @media (max-width: 600px) {
   .gb-container {
     padding: 8px;
