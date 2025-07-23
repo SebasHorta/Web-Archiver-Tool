@@ -31,7 +31,7 @@ class ArchiveRequest(BaseModel):
     url: str
 
 # Helper: Download assets and rewrite URLs in the HTML
-def download_and_rewrite_assets(soup, page_url, asset_folder):
+def download_and_rewrite_assets(soup, page_url, asset_folder, url_prefix):
     for tag, attr in [("img", "src"), ("link", "href"), ("script", "src")]:
         for el in soup.find_all(tag):
             url = el.get(attr)
@@ -47,13 +47,15 @@ def download_and_rewrite_assets(soup, page_url, asset_folder):
                         os.makedirs(asset_folder, exist_ok=True)
                         with open(local_path, "wb") as f:
                             f.write(asset_resp.content)
-                        el[attr] = os.path.relpath(local_path, start=os.path.dirname(asset_folder))
+                        # Calculate relative path from HTML file to asset
+                        el[attr] = os.path.relpath(local_path, start=os.path.dirname(html_path))  # ✅ better for browser
+
                 except Exception as e:
                     print(f"Failed to download asset {asset_url}: {e}")
     return str(soup)
 
 # Helper: Recursively archive page and internal links
-def archive_page(url, base_dir, visited, depth=0, max_depth=2, is_root=False):
+def archive_page(url, base_dir, timestamp, visited, depth=0, max_depth=2, is_root=False):
     if url in visited or depth > max_depth:
         return
     visited.add(url)
@@ -69,21 +71,19 @@ def archive_page(url, base_dir, visited, depth=0, max_depth=2, is_root=False):
         return
 
     soup = BeautifulSoup(html, "html.parser")
-
     parsed = urlparse(url)
+    path_parts = parsed.path.strip("/").split("/") if parsed.path.strip("/") else []
+    url_prefix = "/archives/" + "/".join([parsed.netloc] + path_parts + [timestamp, "assets"])
+
     if is_root:
-        # For the original page, save as index.html in the timestamp directory
         page_dir = base_dir
-        os.makedirs(page_dir, exist_ok=True)
-        html_path = os.path.join(page_dir, "index.html")
     else:
-        # For internal links, save in subfolders
         rel_path = parsed.path.strip("/") or "root"
         page_dir = os.path.join(base_dir, rel_path)
-        os.makedirs(page_dir, exist_ok=True)
-        html_path = os.path.join(page_dir, "index.html")
+    os.makedirs(page_dir, exist_ok=True)
+    html_path = os.path.join(page_dir, "index.html")
 
-    download_and_rewrite_assets(soup, url, os.path.join(page_dir, "assets"))
+    download_and_rewrite_assets(soup, url, os.path.join(page_dir, "assets"), url_prefix)
 
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(str(soup))
@@ -92,7 +92,7 @@ def archive_page(url, base_dir, visited, depth=0, max_depth=2, is_root=False):
         for a in soup.find_all("a", href=True):
             link = urljoin(url, a["href"])
             if urlparse(link).netloc == parsed.netloc:
-                archive_page(link, base_dir, visited, depth + 1, max_depth, is_root=False)
+                archive_page(link, base_dir, timestamp, visited, depth + 1, max_depth, is_root=False)
 
 
 # POST /archive: Archive a website snapshot
@@ -112,7 +112,7 @@ def archive_site(request: ArchiveRequest):
 
     visited = set()
     try:
-        archive_page(request.url, timestamp_dir, visited, depth=0, max_depth=1, is_root=True)
+        archive_page(request.url, timestamp_dir, timestamp, visited, depth=0, max_depth=1, is_root=True)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -142,12 +142,15 @@ def list_archive(domain: str = Query(..., description="Domain or domain/path to 
 @app.get("/archive/{domain}/{path:path}/{timestamp}")
 def snapShot(
     domain: str = Path(..., description="Domain (e.g. www.greenboard.com)"),
-    path: str = Path(..., description="Path inside domain"),
+    path: str = Path(..., description="Path inside domain (can be empty)"),
     timestamp: str = Path(..., description="Archive timestamp")
 ):
-    relative_path = path.strip("/") or "root"
-    filepath = os.path.join("archives", domain, timestamp, relative_path, "index.html")
-
+    relative_path = path.strip("/")  # No fallback to "root" here
+    # Correct structure: archives/domain/path/timestamp/index.html
+    if relative_path:
+        filepath = os.path.join("archives", domain, relative_path, timestamp, "index.html")
+    else:
+        filepath = os.path.join("archives", domain, timestamp, "index.html")
 
     if not os.path.exists(filepath):
         return Response(content="Snapshot not found", status_code=404)
@@ -156,6 +159,8 @@ def snapShot(
         html = f.read()
 
     return Response(content=html, media_type="text/html")
+
+
 
 # GET /api/archives/all: List all domains and their timestamps
 @app.get("/api/archives/all")
