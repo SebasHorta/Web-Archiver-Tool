@@ -94,7 +94,7 @@ function App() {
 
   return (
     <div className="gb-container">
-      <h1 className="gb-title">Greenboard Web Archiver</h1>
+      <h1 className="gb-title">Greenboard Web Archiver V1</h1>
 
       {/* Archive a URL */}
       <section className="gb-card gb-archive-section">
