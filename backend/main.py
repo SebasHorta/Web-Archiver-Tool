@@ -138,6 +138,16 @@ def list_archive(domain: str = Query(..., description="Domain or domain/path to 
     return {"archives": timestamps}
 
 
+@app.get("/archive/{domain}/{timestamp}")
+def snapShot_root(domain: str, timestamp: str):
+    filepath = os.path.join("archives", domain, timestamp, "index.html")
+    if not os.path.exists(filepath):
+        return Response(content="Snapshot not found", status_code=404)
+    with open(filepath, "r", encoding="utf-8") as f:
+        html = f.read()
+    return Response(content=html, media_type="text/html")
+
+
 # GET /archive/{domain}/{path}/{timestamp}: Serve archived page HTML
 @app.get("/archive/{domain}/{path:path}/{timestamp}")
 def snapShot(
