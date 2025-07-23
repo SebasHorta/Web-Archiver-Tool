@@ -1,8 +1,3 @@
-"""
-Greenboard Web Archiver Backend
-FastAPI app for crawling, archiving, and serving website snapshots.
-Handles recursive crawling, asset downloading, link rewriting, and snapshot serving.
-"""
 from fastapi import FastAPI, HTTPException, Query, Response, Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -16,42 +11,35 @@ from bs4 import BeautifulSoup
 # Initialize FastAPI app
 app = FastAPI()
 
-# Make sure 'archives' dir exists before mounting static files
+# Ensure 'archives' directory exists before mounting
 os.makedirs("archives", exist_ok=True)
 
-# Serve archived HTML/assets at /archives
+# Serve archived snapshots and assets statically
 app.mount("/archives", StaticFiles(directory="archives"), name="archives")
 
-# Allow CORS for all origins (dev/demo)
+# CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (lock down for prod)
+    allow_origins=["*"],  # Allow all origins (adjust for production)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Model for POST /archive requests
+# Request model
 class ArchiveRequest(BaseModel):
-    url: str  # User input URL to archive
+    url: str
 
-# Download assets (img, CSS, JS) and rewrite their URLs in the HTML
-# soup: BeautifulSoup object for the page
-# page_url: URL of the current page
-# asset_folder: where to save assets
-# url_prefix: prefix for asset URLs in the HTML
-# Returns: soup as string with asset URLs rewritten
-
+# Helper: Download assets and rewrite URLs in the HTML
 def download_and_rewrite_assets(soup, page_url, asset_folder, url_prefix):
-    # Loop through all asset tags (img, link, script)
     for tag, attr in [("img", "src"), ("link", "href"), ("script", "src")]:
         for el in soup.find_all(tag):
             url = el.get(attr)
             if url:
-                asset_url = urljoin(page_url, url)  # Handles relative/absolute
+                asset_url = urljoin(page_url, url)
                 asset_name = os.path.basename(urlparse(asset_url).path)
                 if not asset_name:
-                    continue  # Skip if no filename
+                    continue
                 local_path = os.path.join(asset_folder, asset_name)
                 try:
                     asset_resp = requests.get(asset_url, timeout=5)
@@ -59,25 +47,19 @@ def download_and_rewrite_assets(soup, page_url, asset_folder, url_prefix):
                         os.makedirs(asset_folder, exist_ok=True)
                         with open(local_path, "wb") as f:
                             f.write(asset_resp.content)
-                        # Set asset URL in HTML to relative path (for browser)
-                        el[attr] = os.path.relpath(local_path, start=os.path.dirname(html_path))
+                        # Calculate relative path from HTML file to asset
+                        el[attr] = os.path.relpath(local_path, start=os.path.dirname(html_path))  # ✅ better for browser
+
                 except Exception as e:
                     print(f"Failed to download asset {asset_url}: {e}")
     return str(soup)
 
-# Rewrite all <a> links in the HTML
-# - Internal links get rewritten to point to the correct archive route
-# - External links get marked and open in new tab with a warning
-# soup: BeautifulSoup object
-# domain: domain being archived
-# timestamp: archive timestamp
-# base_path: path we started crawling from
-
+# Helper: Rewrite internal links to route through /archive/{domain}/{path}/{timestamp}
 def rewrite_internal_links(soup, domain, timestamp, base_path):
     for a in soup.find_all("a", href=True):
         href = a["href"]
         parsed_href = urlparse(href)
-        # External link: mark and set up modal warning
+        # Mark external links
         if parsed_href.netloc and parsed_href.netloc != domain:
             a["class"] = (a.get("class", []) or []) + ["external-link"]
             a["target"] = "_blank"
@@ -85,9 +67,8 @@ def rewrite_internal_links(soup, domain, timestamp, base_path):
             a["data-external"] = "true"
             a["title"] = "This link will take you to the live website"
             continue
-        # Internal link: rewrite to archive route
         path = parsed_href.path.strip("/")
-        # Remove base_path prefix if present
+        # Remove the base_path prefix from the path if present
         if base_path and path.startswith(base_path):
             sub_path = path[len(base_path):].strip("/")
         else:
@@ -97,18 +78,8 @@ def rewrite_internal_links(soup, domain, timestamp, base_path):
         else:
             a["href"] = f"/archive/{domain}/{base_path}/{timestamp}"
 
-# Recursively crawl and archive a page and its internal links
-# url: page to crawl
-# base_dir: root archive dir for this domain
-# timestamp: archive timestamp
-# base_path: path we started crawling from
-# visited: set of already-crawled URLs
-# depth: current crawl depth
-# max_depth: how deep to crawl
-# is_root: True if this is the initial page
-
+# Helper: Recursively archive page and internal links
 def archive_page(url, base_dir, timestamp, base_path, visited, depth=0, max_depth=2, is_root=False):
-    # Don't crawl same URL twice or go too deep
     if url in visited or depth > max_depth:
         return
     visited.add(url)
@@ -133,10 +104,9 @@ def archive_page(url, base_dir, timestamp, base_path, visited, depth=0, max_dept
     os.makedirs(page_dir, exist_ok=True)
     html_path = os.path.join(page_dir, "index.html")
 
-    # Download assets and rewrite asset URLs
     download_and_rewrite_assets(soup, url, os.path.join(page_dir, "assets"), url_prefix)
 
-    # Crawl internal links before rewriting them (so we don't rewrite before crawling)
+    # --- Crawl internal links BEFORE rewriting them ---
     if depth < max_depth:
         for a in soup.find_all("a", href=True):
             orig_href = a["href"]  # Use the original href for crawling
@@ -144,11 +114,22 @@ def archive_page(url, base_dir, timestamp, base_path, visited, depth=0, max_dept
             if urlparse(link).netloc == parsed.netloc:
                 archive_page(link, base_dir, timestamp, base_path, visited, depth + 1, max_depth, is_root=False)
 
-    # Rewrite internal links for the saved HTML
+    # --- Now rewrite internal links for the saved HTML ---
     rewrite_internal_links(soup, parsed.netloc, timestamp, base_path)
 
-    # Inject JS for external link modal warning
-    modal_js = '''<script>\ndocument.addEventListener('DOMContentLoaded', function() {\n  document.querySelectorAll('a[data-external="true"]').forEach(function(link) {\n    link.addEventListener('click', function(e) {\n      e.preventDefault();\n      if (window.confirm('You are about to leave the archive and visit the live website. Continue?')) {\n        window.open(link.href, '_blank', 'noopener,noreferrer');\n      }\n    });\n  });\n});\n</script>'''
+    # Inject modal JS for external links
+    modal_js = '''<script>\n
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('a[data-external="true"]').forEach(function(link) {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      if (window.confirm('You are about to leave the archive and visit the live website. Continue?')) {
+        window.open(link.href, '_blank', 'noopener,noreferrer');
+      }
+    });
+  });
+});
+</script>'''
     # Save HTML with modal JS injected before </body>
     html_str = str(soup)
     if '</body>' in html_str:
@@ -158,10 +139,9 @@ def archive_page(url, base_dir, timestamp, base_path, visited, depth=0, max_dept
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html_str)
 
-# POST /archive: User submits a URL to archive
+# POST /archive: Archive a website snapshot
 @app.post("/archive")
 def archive_site(request: ArchiveRequest):
-    """Handles POST to /archive. Kicks off crawl and archive for a given URL."""
     parsed_url = urlparse(request.url)
     domain = parsed_url.netloc
     path = parsed_url.path.strip("/")
@@ -191,7 +171,6 @@ def archive_site(request: ArchiveRequest):
 # GET /archive: List all timestamps for a given domain or subpath
 @app.get("/archive")
 def list_archive(domain: str = Query(..., description="Domain or domain/path to list archives for")):
-    """Lists all archive timestamps for a given domain or subpath."""
     # Normalize the domain input: strip leading/trailing slashes, collapse multiple slashes
     norm = domain.strip("/").replace("//", "/")
     archive_root = os.path.join("archives", *norm.split("/"))
@@ -205,10 +184,8 @@ def list_archive(domain: str = Query(..., description="Domain or domain/path to 
 
 @app.get("/archive/{domain}/{timestamp}")
 def snapShot_root(domain: str, timestamp: str):
-    """Serves the root archived HTML for a domain/timestamp."""
     filepath = os.path.join("archives", domain, timestamp, "index.html")
     if not os.path.exists(filepath):
-        # Show a friendly not-found page if snapshot doesn't exist
         not_found_html = '''
         <html>
           <head>
@@ -243,7 +220,6 @@ def snapShot(
     path: str = Path(..., description="Path inside domain (can be empty)"),
     timestamp: str = Path(..., description="Archive timestamp")
 ):
-    """Serves archived HTML for a subpath (deep link) and timestamp."""
     relative_path = path.strip("/")  # No fallback to "root" here
     # Correct structure: archives/domain/path/timestamp/index.html
     if relative_path:
@@ -252,7 +228,6 @@ def snapShot(
         filepath = os.path.join("archives", domain, timestamp, "index.html")
 
     if not os.path.exists(filepath):
-        # Friendly not-found page
         not_found_html = '''
         <html>
           <head>
@@ -294,7 +269,6 @@ def snapShot(
 # GET /api/archives/all: List all domains and their timestamps
 @app.get("/api/archives/all")
 def list_all_archives():
-    """Lists all domains and their archive timestamps (for frontend table)."""
     archive_root = "archives"
     if not os.path.exists(archive_root):
         return {"archives": {}}
