@@ -54,19 +54,21 @@ def download_and_rewrite_assets(soup, page_url, asset_folder, url_prefix):
                     print(f"Failed to download asset {asset_url}: {e}")
     return str(soup)
 
-
+# Helper: Rewrite internal links to route through /archive/{domain}/{path}/{timestamp}
 def rewrite_internal_links(soup, domain, timestamp):
     for a in soup.find_all("a", href=True):
         href = a["href"]
         parsed_href = urlparse(href)
-        # Only rewrite if it's a same-domain or relative link
-        if not parsed_href.netloc or parsed_href.netloc == domain:
-            path = parsed_href.path.strip("/")
-            if path:
-                a["href"] = f"/archive/{domain}/{path}/{timestamp}"
-            else:
-                a["href"] = f"/archive/{domain}/{timestamp}"
 
+        # Skip external links
+        if parsed_href.netloc and parsed_href.netloc != domain:
+            continue
+
+        path = parsed_href.path.strip("/")
+        if path:
+            a["href"] = f"/archive/{domain}/{timestamp}/{path}"
+        else:
+            a["href"] = f"/archive/{domain}/{timestamp}"
 
 # Helper: Recursively archive page and internal links
 def archive_page(url, base_dir, timestamp, visited, depth=0, max_depth=2, is_root=False):
@@ -113,7 +115,6 @@ def archive_page(url, base_dir, timestamp, visited, depth=0, max_depth=2, is_roo
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(str(soup))
 
-
 # POST /archive: Archive a website snapshot
 @app.post("/archive")
 def archive_site(request: ArchiveRequest):
@@ -156,7 +157,6 @@ def list_archive(domain: str = Query(..., description="Domain or domain/path to 
     ]
     return {"archives": timestamps}
 
-
 @app.get("/archive/{domain}/{timestamp}")
 def snapShot_root(domain: str, timestamp: str):
     filepath = os.path.join("archives", domain, timestamp, "index.html")
@@ -165,7 +165,6 @@ def snapShot_root(domain: str, timestamp: str):
     with open(filepath, "r", encoding="utf-8") as f:
         html = f.read()
     return Response(content=html, media_type="text/html")
-
 
 # GET /archive/{domain}/{path}/{timestamp}: Serve archived page HTML
 @app.get("/archive/{domain}/{path:path}/{timestamp}")
@@ -189,8 +188,6 @@ def snapShot(
 
     return Response(content=html, media_type="text/html")
 
-
-
 # GET /api/archives/all: List all domains and their timestamps
 @app.get("/api/archives/all")
 def list_all_archives():
@@ -210,4 +207,3 @@ def list_all_archives():
                 all_archives.setdefault(key, []).append(d)
 
     return {"archives": all_archives}
-
