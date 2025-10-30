@@ -89,7 +89,7 @@ function App() {
 
   return (
     <div className="gb-container">
-      <h1 className="gb-title">Greenboard Web Archiver</h1>
+      <h1 className="gb-title">Web Archiver</h1>
 
       {/* Archive a URL */}
       <section className="gb-card gb-archive-section">
@@ -195,7 +195,7 @@ function App() {
         </section>
       )}
       <footer className="gb-footer">
-        <span>Greenboard Interview Project &middot; Website Archiving Tool</span>
+        <span>Personal Project &middot; Website Archiving Tool</span>
       </footer>
     </div>
   );
