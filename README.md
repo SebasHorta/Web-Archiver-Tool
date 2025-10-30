@@ -1,6 +1,6 @@
-# Web Archiver
+# Greenboard Web Archiver
 
-Web Archiver is a lightweight web archiving tool that lets users archive static snapshots of `.com` websites. It features a React frontend and a FastAPI backend, and is designed to be simple, responsive, and easy to use.
+Greenboard is a lightweight web archiving tool that lets users archive static snapshots of `.com` websites. It features a React frontend and a FastAPI backend, and is designed to be simple, responsive, and easy to use.
 
 ## 🔍 Features
 
@@ -23,8 +23,8 @@ Web Archiver is a lightweight web archiving tool that lets users archive static 
 ### 1. Clone the repository
 
 ```bash
-git clone <your-repo-url>
-cd Web-Archiver
+git clone https://github.com/SebasHorta/Greenboard-Takehome.git
+cd Greenboard-Takehome
 ```
 
 ### 2. Backend Setup (FastAPI)
@@ -105,4 +105,4 @@ MIT License — see LICENSE for details.
 
 ## 🙌 Acknowledgments
 
-Built as a personal project by [@SebasHorta](https://github.com/SebasHorta).
+This was built as a take-home project for Greenboard. Designed and developed by [@SebasHorta](https://github.com/SebasHorta).

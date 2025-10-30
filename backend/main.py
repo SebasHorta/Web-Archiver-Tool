@@ -216,7 +216,7 @@ def snapShot_root(domain: str, timestamp: str):
 # GET /archive/{domain}/{path}/{timestamp}: Serve archived page HTML
 @app.get("/archive/{domain}/{path:path}/{timestamp}")
 def snapShot(
-    domain: str = Path(..., description="Domain (e.g. www.example.com)"),
+    domain: str = Path(..., description="Domain (e.g. www.greenboard.com)"),
     path: str = Path(..., description="Path inside domain (can be empty)"),
     timestamp: str = Path(..., description="Archive timestamp")
 ):
